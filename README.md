@@ -26,4 +26,5 @@
 - **起きること**: Bot が内容の言語を検出し、英訳した本文を自動でコメント返信します
 - **対象**: 新規 Issue／新規コメント
 - **確認方法**: 日本語で Issue かコメントを投稿 → 数秒〜数十秒で英訳コメントが付けばOK
+- **ラベル**: 英訳返信と同時に、該当 Issue/コメントへ翻訳済みのラベル（例: `translated`）が自動付与されます（運用により名称は異なる場合があります）
 - **参考**: [dromara/issues-translate-action](https://github.com/dromara/issues-translate-action)

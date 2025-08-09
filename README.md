@@ -22,44 +22,8 @@
 
 ### Issues Translate Action の使い方
 
-- **目的**: 英語以外の Issue／コメント本文を自動検出し、英訳を Bot が返信します
-- **トリガー**: Issue の新規作成、Issue への新規コメント作成
+- **やること**: 普段どおりに Issue を作成、または Issue にコメントを書きます（日本語など英語以外でもOK）
+- **起きること**: Bot が内容の言語を検出し、英訳した本文を自動でコメント返信します
+- **対象**: 新規 Issue／新規コメント
+- **確認方法**: 日本語で Issue かコメントを投稿 → 数秒〜数十秒で英訳コメントが付けばOK
 - **参考**: [dromara/issues-translate-action](https://github.com/dromara/issues-translate-action)
-
-#### 最小設定
-`.github/workflows/issue-translator.yml` を作成（または既存を更新）します。
-
-```yaml
-name: issue-translator
-on:
-  issue_comment:
-    types: [created]
-  issues:
-    types: [opened]
-
-jobs:
-  translate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: usthe/issues-translate-action@v2.7
-        with:
-          IS_MODIFY_TITLE: false
-          CUSTOM_BOT_NOTE: Bot detected non-English content and translated it automatically.
-```
-
-#### 独自 Bot を使う場合（任意）
-1. Bot 用 GitHub アカウントで PAT を発行し、リポジトリ Secrets に `BOT_GITHUB_TOKEN` を追加
-2. YAML を以下のように変更
-
-```yaml
-      - uses: usthe/issues-translate-action@v2.7
-        with:
-          BOT_GITHUB_TOKEN: ${{ secrets.BOT_GITHUB_TOKEN }}
-          IS_MODIFY_TITLE: false
-          CUSTOM_BOT_NOTE: Bot detected non-English content and translated it automatically.
-```
-
-#### 注意点
-- タイトルも英訳したい場合は `IS_MODIFY_TITLE: true` にし、Bot に書き込み権限（コラボレーター招待）が必要
-- 動作確認は日本語で Issue を作成し、Bot からの英訳返信を確認
-- 詳細は公式 README を参照: [dromara/issues-translate-action](https://github.com/dromara/issues-translate-action)

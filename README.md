@@ -1,0 +1,2 @@
+# CursorMeetupOsaka
+Cursor Meetup Osakaリソースリポジトリ

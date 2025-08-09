@@ -1,0 +1,26 @@
+name: issue-translator
+
+on:
+  issues:
+    types:
+      - opened     # still fire when a new issue arrives…
+      - labeled    # …and when *any* label is added
+  issue_comment:
+    types:
+      - created    # fire on every new comment
+
+jobs:
+  translate:
+    runs-on: ubuntu-latest
+    # only run if:
+    #  1) this wasn’t the bot itself (infinite‐loop guard)
+    #  2) the issue currently has a label named “translate”
+    if: >
+      github.actor != 'issues-translate-bot' &&
+      contains(join(github.event.issue.labels.*.name, ','), 'translate')
+
+    steps:
+      - uses: usthe/issues-translate-action@v2.7
+        with:
+          IS_MODIFY_TITLE: false
+          CUSTOM_BOT_NOTE: " "

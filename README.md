@@ -19,12 +19,8 @@
 
 
 ## issueについて。
-
-### Issues Translate Action の使い方
-
 - **やること**: 翻訳したい Issue を作成したら、対象の Issue に翻訳トリガー用ラベル（例: `translate`）を付与します
 - **起きること**: ラベルを検出すると、Bot が本文の言語を判定し、英訳をコメントで自動返信します
 - **対象**: ラベルが付与された Issue（およびその新規コメント）
 - **確認方法**: ラベル付与後、数秒〜数十秒で英訳コメントが付けばOK
-- **補足**: ラベル名は運用により異なる場合があります（例: `translate`, `needs-translation` など）
 - **参考**: [dromara/issues-translate-action](https://github.com/dromara/issues-translate-action)

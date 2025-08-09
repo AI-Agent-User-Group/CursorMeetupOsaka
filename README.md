@@ -1,4 +1,5 @@
 # CursorMeetupOsaka
+![Cursor Meetup Osaka バナー](assets/img/banner.jpg)
 
 ## 概要
 

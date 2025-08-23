@@ -1,26 +1,170 @@
-name: issue-translator
+name: Translate Issue to English
 
 on:
   issues:
-    types:
-      - opened     # still fire when a new issue arrives…
-      - labeled    # …and when *any* label is added
-  issue_comment:
-    types:
-      - created    # fire on every new comment
+    types: [opened, labeled]
+
+permissions:
+  contents: read
+  issues: write
+  models: read
+
+concurrency:
+  group: issue-translation-${{ github.event.issue.number }}
+  cancel-in-progress: true
 
 jobs:
   translate:
-    runs-on: ubuntu-latest
-    # only run if:
-    #  1) this wasn’t the bot itself (infinite‐loop guard)
-    #  2) the issue currently has a label named “translate”
     if: >
-      github.actor != 'issues-translate-bot' &&
-      contains(join(github.event.issue.labels.*.name, ','), 'translate')
-
+      (github.event_name == 'issues') && (
+        (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'translate')) ||
+        (github.event.action == 'labeled' && github.event.label.name == 'translate')
+      ) && !contains(github.event.issue.labels.*.name, 'translated:en')
+    runs-on: ubuntu-latest
     steps:
-      - uses: usthe/issues-translate-action@v2.7
+      - name: Check translation status (marker/label)
+        id: precheck
+        uses: actions/github-script@v7
         with:
-          IS_MODIFY_TITLE: false
-          CUSTOM_BOT_NOTE: " "
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.issue.number;
+
+            const labels = (context.payload.issue?.labels || []).map(l => l.name);
+            const hasTranslatedLabel = labels.includes('translated:en');
+
+            const marker = '<!-- translated:en -->';
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100
+            });
+            const hasMarker = comments.some(c => (c.body || '').includes(marker));
+
+            core.setOutput('hasLabel', hasTranslatedLabel ? 'true' : 'false');
+            core.setOutput('hasMarker', hasMarker ? 'true' : 'false');
+            core.setOutput('skip', (hasTranslatedLabel || hasMarker) ? 'true' : 'false');
+      - name: Run AI Inference (translate to English)
+        id: inference
+        if: steps.precheck.outputs.skip != 'true'
+        uses: actions/ai-inference@v2
+        continue-on-error: true
+        with:
+          model: openai/gpt-4.1-mini  
+          system-prompt: >
+            You are a professional translator. Translate Japanese to English.
+            Keep Markdown structure, code blocks and links intact.
+            Do not add commentary or apologies. Output English only.
+          prompt: |
+            Translate the following GitHub Issue to English.
+            Preserve Markdown structure, code fences, and links.
+            Output in Markdown with the following sections:
+
+            ## Title
+            - Provide an English title only.
+
+            ## Body
+            - Provide the English translation of the body.
+
+            ----
+            Original Title:
+            "${{ github.event.issue.title }}"
+
+            Original Body:
+            """
+            ${{ github.event.issue.body }}
+            """
+          max-tokens: 2000
+      - name: Comment translation to the issue
+        if: steps.precheck.outputs.skip != 'true'
+        uses: actions/github-script@v7
+        env:
+          RESPONSE: ${{ steps.inference.outputs.response }}
+          RESPONSE_FILE: ${{ steps.inference.outputs['response-file'] }}
+          GITHUB_TOKEN: ${{ github.token }}
+          INFERENCE_ENDPOINT: https://models.github.ai/inference
+          INFERENCE_MODEL: openai/gpt-4.1-mini
+        with:
+          script: |
+            const fs = require('fs');
+            const responseFile = process.env.RESPONSE_FILE;
+            let body = process.env.RESPONSE || '';
+            if (responseFile && responseFile.length) {
+              try { body = fs.readFileSync(responseFile, 'utf8'); } catch (_) {}
+            }
+            body = (body || '').trim();
+            // Fallback: direct call to GitHub Models if ai-inference outputs are empty
+            if (!body) {
+              const endpoint = (process.env.INFERENCE_ENDPOINT || '').replace(/\/$/, '') || 'https://models.github.ai/inference';
+              const token = process.env.GITHUB_TOKEN;
+              const model = process.env.INFERENCE_MODEL || 'openai/gpt-4.1-mini';
+
+              const systemPrompt = [
+                'You are a professional translator. Translate Japanese to English.',
+                'Keep Markdown structure, code blocks and links intact.',
+                'Do not add commentary or apologies. Output English only.'
+              ].join(' ');
+
+              const issueTitle = context.payload.issue?.title || '';
+              const issueBody = context.payload.issue?.body || '';
+              const userPrompt = `Translate the following GitHub Issue to English.\n` +
+                `Preserve Markdown structure, code fences, and links.\n` +
+                `Output in Markdown with the following sections:\n\n` +
+                `## Title\n- Provide an English title only.\n\n` +
+                `## Body\n- Provide the English translation of the body.\n\n` +
+                `----\n` +
+                `Original Title:\n"${issueTitle}"\n\n` +
+                `Original Body:\n"""\n${issueBody}\n"""`;
+
+              const res = await fetch(`${endpoint}/v1/chat/completions`, {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${token}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  model,
+                  messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                  ],
+                  max_tokens: 2000
+                })
+              });
+
+              if (!res.ok) {
+                const text = await res.text().catch(() => '');
+                throw new Error(`Direct inference failed: ${res.status} ${res.statusText} ${text}`);
+              }
+              const data = await res.json();
+              body = (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || '';
+              body = (body || '').trim();
+            }
+
+            if (!body) {
+              body = 'Translation failed or empty.';
+            } else {
+              body = '<!-- translated:en -->\n\n### Translation\n\n' + body;
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body
+            });
+
+      - name: Add translated:en label
+        if: steps.precheck.outputs.skip != 'true' && steps.precheck.outputs.hasLabel != 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['translated:en']
+            });
+
+
